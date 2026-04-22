@@ -347,7 +347,7 @@
 
 <script>
   const TARGET = 220;
-  const TYPES = ['força', 'corrida', 'natação', 'caminhada', 'alongamento'];
+  const TYPES = ['força', 'corrida', 'natação', 'caminhada', 'alongamento', 'tennis', 'ski'];
   const STORAGE_KEY = 'exercise-log-v1';
 
   let logs = [];
@@ -486,19 +486,35 @@
   function playRewardSound() {
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
       const now = audioCtx.currentTime;
-      // Pleasant two-note chime: C6 -> E6
-      [[1046.5, 0], [1318.5, 0.12]].forEach(([freq, delay]) => {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, now + delay);
-        gain.gain.linearRampToValueAtTime(0.25, now + delay + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.5);
-        osc.connect(gain).connect(audioCtx.destination);
-        osc.start(now + delay);
-        osc.stop(now + delay + 0.55);
+      // Warm ascending arpeggio: G4 -> B4 -> D5 -> G5 (level-up feel)
+      const notes = [
+        { freq: 392.00, t: 0.00 },
+        { freq: 493.88, t: 0.09 },
+        { freq: 587.33, t: 0.18 },
+        { freq: 783.99, t: 0.28 },
+      ];
+      notes.forEach(({ freq, t }, i) => {
+        // Two layered oscillators per note for warmth (sine + slightly-detuned triangle)
+        [
+          { type: 'sine',     detune: 0,  gainMul: 1.00 },
+          { type: 'triangle', detune: 6,  gainMul: 0.28 },
+        ].forEach(({ type, detune, gainMul }) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.value = freq;
+          osc.detune.value = detune;
+          const peak = (i === notes.length - 1 ? 0.22 : 0.16) * gainMul;
+          const decay = (i === notes.length - 1 ? 0.85 : 0.45);
+          gain.gain.setValueAtTime(0, now + t);
+          gain.gain.linearRampToValueAtTime(peak, now + t + 0.012);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + t + decay);
+          osc.connect(gain).connect(audioCtx.destination);
+          osc.start(now + t);
+          osc.stop(now + t + decay + 0.05);
+        });
       });
     } catch (e) { /* audio not available */ }
   }
@@ -551,6 +567,50 @@
   }
 
   // ---- Init ----
+  // One-shot historical seeding — hit URL `?import=2026-historical` once per device.
+  function maybeImportHistorical() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('import') !== '2026-historical') return;
+    const FLAG = 'imported-2026-historical';
+    if (localStorage.getItem(FLAG) === 'true') {
+      alert('Histórico de 2026 já foi importado neste dispositivo.');
+      history.replaceState({}, '', location.pathname);
+      return;
+    }
+    if (!confirm('Importar 66 exercícios históricos de 2026? Isso só pode ser feito uma vez.')) return;
+
+    const distribution = [
+      { type: 'corrida',    count: 24 },
+      { type: 'força',      count: 23 },
+      { type: 'natação',    count: 12 },
+      { type: 'ski',        count: 5  },
+      { type: 'caminhada',  count: 1  },
+      { type: 'tennis',     count: 1  },
+    ];
+    const start = new Date(2026, 0, 1);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const totalDays = Math.floor((today - start) / 86400000) + 1;
+
+    let id = Date.now();
+    const newEntries = [];
+    distribution.forEach(({ type, count }) => {
+      for (let i = 0; i < count; i++) {
+        const dayOffset = Math.floor((i + 0.5) * totalDays / count);
+        const d = new Date(start);
+        d.setDate(d.getDate() + dayOffset);
+        const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        newEntries.push({ id: id++, date: iso, type });
+      }
+    });
+    logs.push(...newEntries);
+    save();
+    localStorage.setItem(FLAG, 'true');
+    history.replaceState({}, '', location.pathname);
+    renderAll();
+    alert(`Importados ${newEntries.length} exercícios históricos de 2026.`);
+  }
+
   function init() {
     load();
     document.getElementById('yearLabel').textContent = currentYear();
@@ -558,6 +618,7 @@
     document.getElementById('dateInput').max = todayISO();
     document.getElementById('logBtn').addEventListener('click', handleLog);
     renderTypes();
+    maybeImportHistorical();
     renderAll();
   }
   init();
