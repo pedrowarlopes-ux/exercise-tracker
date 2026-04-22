@@ -337,6 +337,16 @@
     <h2>Histórico recente</h2>
     <div class="history-list" id="historyList"></div>
   </div>
+
+  <div class="card" id="importCard" style="display:none">
+    <h2>Importar histórico</h2>
+    <p style="font-size:14px;color:var(--muted);margin:0 0 12px;line-height:1.4">
+      Importar 66 exercícios já realizados em 2026 (24 corrida, 23 força, 12 natação, 5 ski, 1 caminhada, 1 tennis), distribuídos entre 1° de janeiro e hoje. Só pode ser feito uma vez por dispositivo.
+    </p>
+    <button class="log-btn" id="importBtn" style="background:var(--surface-2);color:var(--text);border:1px solid var(--border)">
+      Importar histórico 2026
+    </button>
+  </div>
 </div>
 
 <div class="reward" id="reward">
@@ -567,17 +577,16 @@
   }
 
   // ---- Init ----
-  // One-shot historical seeding — hit URL `?import=2026-historical` once per device.
-  function maybeImportHistorical() {
-    const params = new URLSearchParams(location.search);
-    if (params.get('import') !== '2026-historical') return;
-    const FLAG = 'imported-2026-historical';
-    if (localStorage.getItem(FLAG) === 'true') {
+  // One-shot historical seeding for 2026.
+  const IMPORT_FLAG = 'imported-2026-historical';
+
+  function performHistoricalImport() {
+    if (localStorage.getItem(IMPORT_FLAG) === 'true') {
       alert('Histórico de 2026 já foi importado neste dispositivo.');
-      history.replaceState({}, '', location.pathname);
-      return;
+      renderImportCard();
+      return false;
     }
-    if (!confirm('Importar 66 exercícios históricos de 2026? Isso só pode ser feito uma vez.')) return;
+    if (!confirm('Importar 66 exercícios históricos de 2026? Só pode ser feito uma vez.')) return false;
 
     const distribution = [
       { type: 'corrida',    count: 24 },
@@ -605,10 +614,24 @@
     });
     logs.push(...newEntries);
     save();
-    localStorage.setItem(FLAG, 'true');
-    history.replaceState({}, '', location.pathname);
+    localStorage.setItem(IMPORT_FLAG, 'true');
     renderAll();
+    renderImportCard();
     alert(`Importados ${newEntries.length} exercícios históricos de 2026.`);
+    return true;
+  }
+
+  function renderImportCard() {
+    const card = document.getElementById('importCard');
+    const done = localStorage.getItem(IMPORT_FLAG) === 'true';
+    card.style.display = done ? 'none' : 'block';
+  }
+
+  function maybeImportFromURL() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('import') !== '2026-historical') return;
+    performHistoricalImport();
+    history.replaceState({}, '', location.pathname);
   }
 
   function init() {
@@ -617,8 +640,10 @@
     document.getElementById('dateInput').value = todayISO();
     document.getElementById('dateInput').max = todayISO();
     document.getElementById('logBtn').addEventListener('click', handleLog);
+    document.getElementById('importBtn').addEventListener('click', performHistoricalImport);
     renderTypes();
-    maybeImportHistorical();
+    renderImportCard();
+    maybeImportFromURL();
     renderAll();
   }
   init();
